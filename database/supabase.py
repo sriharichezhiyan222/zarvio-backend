@@ -10,8 +10,13 @@ env_path = repo_root / ".env"
 example_path = repo_root / ".env.example"
 
 # Always try to load `.env` first (this is the standard expectation).
+# Then allow overrides via `.env.local` (useful for local dev secrets).
 if env_path.exists():
     load_dotenv(dotenv_path=env_path, override=False)
+
+local_env_path = repo_root / ".env.local"
+if local_env_path.exists():
+    load_dotenv(dotenv_path=local_env_path, override=True)
 
 # If `.env` is missing keys or doesn't exist, fall back to `.env.example` for defaults.
 # Distinguish between explicit empty values (e.g. "SUPABASE_KEY=") and missing keys by

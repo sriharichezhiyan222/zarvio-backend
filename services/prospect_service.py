@@ -19,7 +19,11 @@ async def get_prospects(
     def _query_prospects():
         query = (
             supabase.table("prospects")
-            .select("lead_id, score, category, analysis, created_at")
+            .select(
+                "lead_id, score, category, analysis, created_at, "
+                "first_offer, walk_away, objections, health_score, how_to_win, recommended_deal_size, "
+                "cold_email, linkedin_message, follow_up"
+            )
             .order("score", desc=True)
         )
 
@@ -31,11 +35,15 @@ async def get_prospects(
 
         return query.execute()
 
-    result = await asyncio.to_thread(_query_prospects)
-    if getattr(result, "error", None):
-        raise RuntimeError(f"Failed to fetch prospects: {result.error}")
+    try:
+        result = await asyncio.to_thread(_query_prospects)
+        if getattr(result, "error", None):
+            raise RuntimeError(f"Failed to fetch prospects: {result.error}")
 
-    prospect_rows = getattr(result, "data", []) or []
+        prospect_rows = getattr(result, "data", []) or []
+    except Exception:
+        # If the prospects table doesn't exist or is misconfigured, return an empty list.
+        return []
     lead_ids = [row.get("lead_id") for row in prospect_rows if row.get("lead_id") is not None]
 
     lead_map: Dict[int, Dict[str, Any]] = {}
@@ -73,6 +81,15 @@ async def get_prospects(
                 "category": row.get("category"),
                 "analysis": row.get("analysis"),
                 "created_at": row.get("created_at"),
+                "first_offer": row.get("first_offer"),
+                "walk_away": row.get("walk_away"),
+                "health_score": row.get("health_score"),
+                "objections": row.get("objections"),
+                "how_to_win": row.get("how_to_win"),
+                "recommended_deal_size": row.get("recommended_deal_size"),
+                "cold_email": row.get("cold_email"),
+                "linkedin_message": row.get("linkedin_message"),
+                "follow_up": row.get("follow_up"),
             }
         )
 

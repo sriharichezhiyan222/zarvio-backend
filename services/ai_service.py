@@ -2,13 +2,40 @@ import json
 import os
 from typing import Dict, Optional
 
+import httpx
 from openai import OpenAI
 
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 client: Optional[OpenAI] = None
 api_key = os.getenv("OPENAI_API_KEY")
 if api_key:
     client = OpenAI(api_key=api_key)
+
+
+def _anthropic_complete(prompt: str) -> Optional[str]:
+    """Call Anthropic completion API as a fallback to OpenAI."""
+
+    if not ANTHROPIC_API_KEY:
+        return None
+
+    url = "https://api.anthropic.com/v1/complete"
+    headers = {"x-api-key": ANTHROPIC_API_KEY, "Content-Type": "application/json"}
+    payload = {
+        "model": "claude-2.1",
+        "prompt": f"\n\nHuman: {prompt}\n\nAssistant:",
+        "max_tokens_to_sample": 500,
+        "temperature": 0.7,
+        "stop_sequences": ["\n\nHuman:"],
+    }
+
+    try:
+        resp = httpx.post(url, json=payload, headers=headers, timeout=30.0)
+        resp.raise_for_status()
+        data = resp.json() or {}
+        return (data.get("completion") or "").strip()
+    except Exception:
+        return None
 
 
 def _fallback_outreach(company: str, service: str) -> Dict[str, str]:
@@ -43,8 +70,33 @@ def _fallback_outreach(company: str, service: str) -> Dict[str, str]:
 
 
 def generate_outreach(company: str, service: str) -> Dict[str, str]:
-    """Generate outbound outreach assets using OpenAI or a deterministic fallback."""
+    """Generate outbound outreach assets using OpenAI, Anthropic, or a deterministic fallback."""
+
+    prompt = (
+        "Generate three outreach assets for the following:\n"
+        f"- Company: {company}\n"
+        f"- Service: {service}\n\n"
+        "1) Email body (no greeting name needed).\n"
+        "2) LinkedIn connection / InMail message.\n"
+        "3) Short discovery call script.\n\n"
+        "Respond only with JSON containing keys: email, linkedin_message, call_script."
+    )
+
     if client is None:
+        # Fall back to Anthropic if configured.
+        try:
+            anthopic_response = _anthropic_complete(prompt)
+            if anthopic_response:
+                data = json.loads(anthopic_response)
+                return {
+                    "email": data.get("email") or _fallback_outreach(company, service)["email"],
+                    "linkedin_message": data.get("linkedin_message")
+                    or _fallback_outreach(company, service)["linkedin_message"],
+                    "call_script": data.get("call_script")
+                    or _fallback_outreach(company, service)["call_script"],
+                }
+        except Exception:
+            pass
         return _fallback_outreach(company, service)
 
     try:
@@ -58,19 +110,7 @@ def generate_outreach(company: str, service: str) -> Dict[str, str]:
                         "outreach messages for B2B prospects."
                     ),
                 },
-                {
-                    "role": "user",
-                    "content": (
-                        "Generate three outreach assets for the following:\n"
-                        f"- Company: {company}\n"
-                        f"- Service: {service}\n\n"
-                        "1) Email body (no greeting name needed).\n"
-                        "2) LinkedIn connection / InMail message.\n"
-                        "3) Short discovery call script.\n\n"
-                        "Respond only with JSON containing keys: email, "
-                        "linkedin_message, call_script."
-                    ),
-                },
+                {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_object"},
         )

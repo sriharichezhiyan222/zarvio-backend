@@ -1,7 +1,14 @@
 import asyncio
-from typing import Any, Dict
+import json
+import os
+from typing import Any, Dict, Optional
 
+from dotenv import load_dotenv
 from database.supabase import get_supabase, has_supabase_config
+from openai import OpenAI
+
+# Ensure env vars (e.g. OPENAI_API_KEY) are loaded early.
+load_dotenv()
 
 
 GENERIC_EMAIL_DOMAINS = {
@@ -14,6 +21,12 @@ GENERIC_EMAIL_DOMAINS = {
     "protonmail.com",
     "mail.com",
 }
+
+
+client: Optional[OpenAI] = None
+api_key = os.getenv("OPENAI_API_KEY")
+if api_key:
+    client = OpenAI(api_key=api_key)
 
 
 def _is_generic_email(email: str) -> bool:
@@ -54,13 +67,8 @@ def _analysis_from_title(title: str) -> str:
     return f"{title} is a good contact but may not be a decision maker."
 
 
-async def score_prospect(lead: Dict[str, Any]) -> Dict[str, Any]:
-    """Score a lead and persist the result in the Supabase `prospects` table.
-
-    This runs in the background and does not block the lead creation request.
-    """
-
-    lead_id = lead.get("id")
+def _deterministic_score(lead: Dict[str, Any]) -> Dict[str, Any]:
+    """Score a lead deterministically (used when OpenAI is unavailable)."""
 
     title = (lead.get("title") or "").strip()
     company = bool(lead.get("company"))
@@ -100,12 +108,92 @@ async def score_prospect(lead: Dict[str, Any]) -> Dict[str, Any]:
     # Include some context in the analysis
     analysis = f"{analysis} {'; '.join(analysis_parts)}." if analysis_parts else analysis
 
-    scoring_result = {
-        "lead_id": lead_id,
+    return {
         "score": score,
         "category": category,
         "analysis": analysis,
     }
+
+
+async def score_prospect_with_openai(lead: Dict[str, Any]) -> Dict[str, Any]:
+    """Score a lead using OpenAI GPT-3.5-turbo.
+
+    Returns a dict containing: score, category, analysis.
+    """
+
+    # If OpenAI is not configured, fall back to deterministic scoring.
+    if client is None:
+        return _deterministic_score(lead)
+
+    name = " ".join(
+        p for p in ((lead.get("first_name") or "").strip(), (lead.get("last_name") or "").strip()) if p
+    ).strip()
+
+    prompt = (
+        "You are a B2B lead scoring assistant. Score this prospect for sales outreach.\n\n"
+        "Respond with valid JSON containing keys: score, category, analysis.\n"
+        "score should be a number between 0 and 100.\n"
+        "category should be one of: low, medium, high.\n"
+        "analysis should be a short paragraph explaining the score.\n\n"
+        "Prospect details:\n"
+        f"Name: {name or 'N/A'}\n"
+        f"Title: {lead.get('title') or 'N/A'}\n"
+        f"Company: {lead.get('company') or 'N/A'}\n"
+        f"Email: {lead.get('email') or 'N/A'}\n"
+    )
+
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful sales intelligence engine."},
+                {"role": "user", "content": prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+
+        raw_content = completion.choices[0].message.content or "{}"
+        parsed = json.loads(raw_content)
+
+        score = parsed.get("score")
+        category = parsed.get("category")
+        analysis = parsed.get("analysis")
+
+        try:
+            score = int(score)
+        except Exception:
+            score = None
+
+        category = category or "low"
+        analysis = analysis or ""
+
+        if score is None:
+            return _deterministic_score(lead)
+
+        # Normalize category
+        category = category.lower() if isinstance(category, str) else "low"
+        if category not in {"low", "medium", "high"}:
+            category = _classify_score(score)
+
+        return {"score": score, "category": category, "analysis": analysis}
+    except Exception:
+        return _deterministic_score(lead)
+
+
+async def score_prospect(lead: Dict[str, Any]) -> Dict[str, Any]:
+    """Score a lead and persist the result in the Supabase `prospects` table.
+
+    This runs in the background and does not block the lead creation request.
+    """
+
+    lead_id = lead.get("id")
+    scoring_result = _deterministic_score(lead)
+
+    if client is not None:
+        ai_result = await score_prospect_with_openai(lead)
+        scoring_result.update(ai_result)
+
+    scoring_result["lead_id"] = lead_id
 
     if not has_supabase_config():
         # Running without Supabase is common in local dev; just return the score.
@@ -133,5 +221,12 @@ async def score_prospect(lead: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as exc:
         # Log and swallow: scoring is best-effort and should not crash the request.
         print(f"Error scoring prospect for lead_id={lead_id}: {exc}")
+
+    try:
+        from services.analytics_service import track
+
+        track("anonymous", "lead_scored", {"lead_id": lead_id, "score": scoring_result.get("score")})
+    except Exception:
+        pass
 
     return scoring_result

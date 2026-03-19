@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 
 from database.supabase import get_supabase, has_supabase_config
 from services import scoring_service
+from services.analytics_service import track
 
 # Simple in-memory fallback storage used when Supabase is not configured.
 _LEAD_FALLBACK_STORE: list[Dict[str, Any]] = []
@@ -55,6 +56,10 @@ async def create_lead(lead_data: Dict[str, Any]) -> Dict[str, Any]:
     if lead_record:
         # Fire-and-forget scoring so we return to the client quickly.
         asyncio.create_task(scoring_service.score_prospect(lead_record))
+        try:
+            track("anonymous", "lead_created", {"lead_id": lead_record.get("id")})
+        except Exception:
+            pass
 
     # Supabase returns a list of inserted rows under .data
-    return getattr(result, "data", result)
+    return lead_record or getattr(result, "data", result)
