@@ -187,7 +187,7 @@ async def google_oauth_url(request: Request):
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google OAuth not configured")
 
-    redirect_uri = str(request.url_for("google_callback"))
+    redirect_uri = str(request.url_for("google_callback")).replace("http://", "https://")
 
     flow = Flow.from_client_config(
         {
@@ -216,7 +216,7 @@ async def google_callback(request: Request):
     if not code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing code parameter")
 
-    redirect_uri = str(request.url_for("google_callback"))
+    redirect_uri = str(request.url_for("google_callback")).replace("http://", "https://")
 
     flow = Flow.from_client_config(
         {
