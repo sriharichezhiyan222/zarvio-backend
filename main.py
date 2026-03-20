@@ -32,7 +32,9 @@ app = FastAPI(
 
 frontend_url = os.getenv("FRONTEND_URL")
 
-cors_origins = [frontend_url] if frontend_url else ["*"]
+cors_origins = ["http://localhost:3000", "http://localhost:5173"]
+if frontend_url:
+    cors_origins.append(frontend_url)
 
 app.add_middleware(
     CORSMiddleware,
