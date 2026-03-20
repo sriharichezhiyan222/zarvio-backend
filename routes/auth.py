@@ -214,44 +214,50 @@ async def google_callback(request: Request):
     redirect_uri = str(request.url_for("google_callback")).replace("http://", "https://")
 
     import httpx as _httpx
-    token_resp = _httpx.post(
-        "https://oauth2.googleapis.com/token",
-        data={
-            "code": code,
-            "client_id": GOOGLE_CLIENT_ID,
-            "client_secret": GOOGLE_CLIENT_SECRET,
-            "redirect_uri": redirect_uri,
-            "grant_type": "authorization_code",
-        },
-    )
-    if token_resp.status_code != 200:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to fetch token: {token_resp.text}")
+    try:
+        token_resp = _httpx.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+            },
+        )
+        if token_resp.status_code != 200:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Token exchange failed: {token_resp.text}")
 
-    tokens = token_resp.json()
-    id_token_str = tokens.get("id_token")
-    if not id_token_str:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No id_token in response")
+        tokens = token_resp.json()
+        id_token_str = tokens.get("id_token")
+        if not id_token_str:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No id_token in response")
 
-    idinfo = id_token.verify_oauth2_token(id_token_str, google_requests.Request(), GOOGLE_CLIENT_ID)
+        idinfo = id_token.verify_oauth2_token(id_token_str, google_requests.Request(), GOOGLE_CLIENT_ID)
 
-    email = idinfo.get("email")
-    name = idinfo.get("name")
-    picture = idinfo.get("picture")
-    google_id = idinfo.get("sub")
+        email = idinfo.get("email")
+        name = idinfo.get("name")
+        picture = idinfo.get("picture")
+        google_id = idinfo.get("sub")
 
-    if not email:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to determine user email")
+        if not email:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to determine user email")
 
-    user = _get_or_create_user(email=email, name=name, picture=picture, google_id=google_id)
-    user_id = str(user.get("id") or email)
-    token = _create_jwt_token(user_id=user_id, email=email)
-    refresh_token = _create_refresh_token(user_id=user_id)
+        user = _get_or_create_user(email=email, name=name, picture=picture, google_id=google_id)
+        user_id = str(user.get("id") or email)
+        token = _create_jwt_token(user_id=user_id, email=email)
+        refresh_token = _create_refresh_token(user_id=user_id)
 
-    redirect_url = (
-        f"{FRONTEND_URL.rstrip('/')}" +
-        f"/dashboard?token={token}&refresh={refresh_token}"
-    )
-    return RedirectResponse(url=redirect_url)
+        redirect_url = (
+            f"{FRONTEND_URL.rstrip('/')}" +
+            f"/dashboard?token={token}&refresh={refresh_token}"
+        )
+        return RedirectResponse(url=redirect_url)
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"OAuth callback error: {str(exc)}")
 
 
 def _get_token_from_header(authorization: Optional[str]) -> Optional[str]:
