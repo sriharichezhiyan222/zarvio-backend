@@ -250,7 +250,7 @@ async def google_callback(request: Request):
 
         redirect_url = (
             f"{FRONTEND_URL.rstrip('/')}" +
-            f"/dashboard?token={token}&refresh={refresh_token}"
+            f"/auth?token={token}&refresh={refresh_token}"
         )
         return RedirectResponse(url=redirect_url)
 
