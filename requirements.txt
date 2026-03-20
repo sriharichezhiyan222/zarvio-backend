@@ -34,7 +34,7 @@ mmh3==5.2.1
 multidict==6.7.1
 openai==2.28.0
 packaging==26.0
-pandas==2.2.0
+pandas==2.2.3
 passlib==1.7.4
 postgrest==2.28.2
 posthog==3.5.0
