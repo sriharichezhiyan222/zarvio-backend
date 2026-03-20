@@ -189,21 +189,16 @@ async def google_oauth_url(request: Request):
 
     redirect_uri = str(request.url_for("google_callback")).replace("http://", "https://")
 
-    flow = Flow.from_client_config(
-        {
-            "web": {
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [redirect_uri],
-            }
-        },
-        scopes=["openid", "email", "profile"],
-        redirect_uri=redirect_uri,
-    )
-
-    auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline", include_granted_scopes="true")
+    from urllib.parse import urlencode
+    params = urlencode({
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "offline",
+        "prompt": "consent",
+    })
+    auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{params}"
     return RedirectResponse(url=auth_url)
 
 
@@ -218,29 +213,26 @@ async def google_callback(request: Request):
 
     redirect_uri = str(request.url_for("google_callback")).replace("http://", "https://")
 
-    flow = Flow.from_client_config(
-        {
-            "web": {
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [redirect_uri],
-            }
+    import httpx as _httpx
+    token_resp = _httpx.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "code": code,
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
         },
-        scopes=["openid", "email", "profile"],
-        redirect_uri=redirect_uri,
     )
+    if token_resp.status_code != 200:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to fetch token: {token_resp.text}")
 
-    try:
-        flow.fetch_token(code=code)
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to fetch token: {exc}")
+    tokens = token_resp.json()
+    id_token_str = tokens.get("id_token")
+    if not id_token_str:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No id_token in response")
 
-    credentials = flow.credentials
-    idinfo = id_token.verify_oauth2_token(
-        credentials.id_token, google_requests.Request(), GOOGLE_CLIENT_ID
-    )
+    idinfo = id_token.verify_oauth2_token(id_token_str, google_requests.Request(), GOOGLE_CLIENT_ID)
 
     email = idinfo.get("email")
     name = idinfo.get("name")
