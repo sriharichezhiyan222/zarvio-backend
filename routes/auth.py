@@ -204,7 +204,7 @@ async def google_oauth_url(request: Request):
     )
 
     auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline", include_granted_scopes="true")
-    return {"auth_url": auth_url}
+    return RedirectResponse(url=auth_url)
 
 
 @router.get("/auth/google/callback")
