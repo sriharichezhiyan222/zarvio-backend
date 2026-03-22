@@ -23,6 +23,11 @@ from routes.outreach import router as outreach_router
 from routes.apollo import router as apollo_router
 from routes.auth import router as auth_router
 from routes.integrations import router as integrations_router
+from routes.copilot import router as copilot_router
+from routes.deal_room import router as deal_room_router
+from routes.ras_scores import router as ras_router
+from routes.forecast import router as forecast_router
+from routes.leads_search import router as leads_search_router
 
 app = FastAPI(
     title="ZarvioAI Backend",
@@ -32,13 +37,17 @@ app = FastAPI(
 
 frontend_url = os.getenv("FRONTEND_URL")
 
-cors_origins = ["http://localhost:3000", "http://localhost:5173"]
+cors_origins = [
+    "http://localhost:3000", 
+    "http://localhost:5173", 
+    "https://zarvio-frontend-livid.vercel.app"
+]
 if frontend_url:
     cors_origins.append(frontend_url)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -75,4 +84,8 @@ app.include_router(outreach_router)
 app.include_router(apollo_router)
 app.include_router(auth_router)
 app.include_router(integrations_router)
-
+app.include_router(copilot_router)
+app.include_router(deal_room_router)
+app.include_router(ras_router)
+app.include_router(forecast_router)
+app.include_router(leads_search_router)
