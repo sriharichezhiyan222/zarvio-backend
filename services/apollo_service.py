@@ -61,10 +61,15 @@ async def _generate_mock_leads_with_openai(prompt: str) -> List[Dict[str, Any]]:
                 "analysis": "AI fallback generated: " + score_res.get("analysis", ""),
             })
         return results
+        return results
     except Exception as e:
         print(f"OpenAI fallback failed: {e}")
-        return await _generate_mock_leads_with_openai("")  # fallback to hardcoded if AI fails
-
+        # Just return the hardcoded list directly instead of recursing
+        return [
+            {"name": "Sarah Chen", "email": "s.chen@stripe.com", "company": "Stripe", "title": "VP of Engineering", "score": 92, "category": "high", "analysis": "High intent decision maker."},
+            {"name": "Marcus Williams", "email": "m.williams@notion.so", "company": "Notion", "title": "Head of Partnerships", "score": 87, "category": "high", "analysis": "Strong signal from company."},
+            {"name": "Tom Nakamura", "email": "tom@supabase.io", "company": "Supabase", "title": "CTO", "score": 85, "category": "high", "analysis": "Technical decision maker."}
+        ]
 
 def _parse_prompt(prompt: str) -> Dict[str, Optional[str]]:
     """Extract titles, location, and industry keywords from a prompt."""
@@ -114,44 +119,32 @@ async def find_leads(prompt: str) -> List[Dict[str, Any]]:
     if not has_supabase_config():
         raise RuntimeError("Missing Supabase configuration (SUPABASE_URL / SUPABASE_KEY).")
 
-    api_key = os.getenv("APOLLO_API_KEY")
-    if not api_key:
-        raise RuntimeError("Missing APOLLO_API_KEY in environment.")
-
+    # Pull leads from HubSpot instead of Apollo.io due to Free Tier limits
+    from services.hubspot_service import list_contacts
+    
     supabase = get_supabase()
-
-    parsed = _parse_prompt(prompt)
-
-    payload: Dict[str, Any] = {
-        "page": 1,
-        "per_page": 10,
-    }
-
-    if parsed.get("titles"):
-        payload["q_titles"] = parsed["titles"]
-    if parsed.get("location"):
-        payload["q_geo_location"] = parsed["location"]
-    if parsed.get("industry"):
-        payload["q_industries"] = [parsed["industry"]]
-
-    # Fall back: if nothing parsed, use prompt as a generic query.
-    if not (parsed.get("titles") or parsed.get("location") or parsed.get("industry")):
-        payload["q"] = prompt
-
-    headers = {"X-Api-Key": api_key}
+    people = []
 
     try:
-        async with httpx.AsyncClient(timeout=10, headers=headers) as client_http:
-            response = await client_http.post(APOLLO_API_URL, json=payload)
-            response.raise_for_status()
-            data = response.json()
-    except Exception as exc:
-        print(f"Apollo API failed or limits reached: {exc}. Falling back to OpenAI generation.")
-        return await _generate_mock_leads_with_openai(prompt)
+        print(f"User requested leads via HubSpot: {prompt}")
+        hs_contacts = await list_contacts(limit=15)
+        for c in hs_contacts:
+            if c.get("email"):
+                people.append({
+                    "first_name": c.get("firstname") or "",
+                    "last_name": c.get("lastname") or "",
+                    "email": c.get("email"),
+                    "title": c.get("jobtitle") or "Unknown",
+                    "organization": c.get("company") or "Unknown"
+                })
+        
+        if not people:
+            print("No HubSpot contacts found. Falling back to OpenAI mocks.")
+            return await _generate_mock_leads_with_openai(prompt)
 
-    people = data.get("people") or []
-    if not isinstance(people, list):
-        people = []
+    except Exception as exc:
+        print(f"HubSpot pull failed: {exc}. Falling back to OpenAI generation.")
+        return await _generate_mock_leads_with_openai(prompt)
 
     results: List[Dict[str, Any]] = []
 
