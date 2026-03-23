@@ -35,6 +35,20 @@ app = FastAPI(
     version="0.2.0",
 )
 
+@app.on_event("startup")
+async def startup_event():
+    """Clear dummy data on startup as requested."""
+    try:
+        from database.supabase import get_supabase, has_supabase_config
+        import asyncio
+        if has_supabase_config():
+            supabase = get_supabase()
+            def _delete():
+                return supabase.table("leads").delete().eq("company", "Acme Corp").execute()
+            await asyncio.to_thread(_delete)
+            print("Successfully cleared out 'Acme Corp' dummy data from Supabase.")
+    except Exception as e:
+        print(f"Startup clean-up task failed: {e}")
 frontend_url = os.getenv("FRONTEND_URL")
 
 cors_origins = [
