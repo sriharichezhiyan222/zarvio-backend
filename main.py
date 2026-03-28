@@ -55,7 +55,7 @@ frontend_url = os.getenv("FRONTEND_URL")
 cors_origins = [
     "http://localhost:3000", 
     "http://localhost:5173", 
-    "https://zarvio-frontend-livid.vercel.app"
+    "https://zarvio-frontend.vercel.app"
 ]
 if frontend_url:
     cors_origins.append(frontend_url)
