@@ -21,7 +21,7 @@ async def list_prospects(
     """Return scored prospects joined with lead data."""
 
     prospects = await get_prospects(category=category, min_score=min_score)
-    return {"prospects": prospects}
+    return prospects
 
 
 @router.post("/score")

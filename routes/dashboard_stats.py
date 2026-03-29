@@ -64,12 +64,3 @@ async def get_overview_stats():
             "recent_deals": [],
             "error": str(e)
         }
-    except Exception as e:
-        print(f"Stats error: {e}")
-        return {
-            "new_leads": {"value": "0", "change": "0%", "type": "neutral"},
-            "active_deals": {"value": "0", "change": "0", "type": "neutral"},
-            "conversion_rate": {"value": "0%", "change": "0%", "type": "neutral"},
-            "recent_deals": [],
-            "error": str(e)
-        }
