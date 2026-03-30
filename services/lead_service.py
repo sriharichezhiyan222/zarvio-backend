@@ -63,3 +63,21 @@ async def create_lead(lead_data: Dict[str, Any]) -> Dict[str, Any]:
 
     # Supabase returns a list of inserted rows under .data
     return lead_record or getattr(result, "data", result)
+
+
+async def list_leads() -> list[Dict[str, Any]]:
+    """Fetch all leads from the Supabase `leads` table."""
+
+    if not has_supabase_config():
+        return _LEAD_FALLBACK_STORE
+
+    supabase = get_supabase()
+
+    def _fetch():
+        return supabase.table("leads").select("*").order("created_at", desc=True).execute()
+
+    result = await asyncio.to_thread(_fetch)
+    if getattr(result, "error", None):
+        raise RuntimeError(f"Failed to fetch leads: {result.error}")
+
+    return getattr(result, "data", []) or []

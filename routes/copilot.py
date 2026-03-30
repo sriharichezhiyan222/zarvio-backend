@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List, Dict
 from fastapi.responses import StreamingResponse
 from services.nvidia_nim_service import stream_chat
+from services.training_service import get_training_config
 from database.supabase import get_supabase
 
 router = APIRouter(prefix="/api/copilot", tags=["copilot"])
@@ -26,13 +27,20 @@ async def copilot_chat(req: CopilotRequest):
                 context += f"- {lead.get('first_name')} from {lead.get('company')} ({lead.get('title')})\\n"
     except Exception as e:
         print(f"Failed to fetch context: {e}")
+    
+    # Fetch AI Training context (The "Training" the user requested)
+    training = get_training_config()
+    business_context = f"\nBusiness Profile: {training.get('business_description', 'N/A')}"
+    business_context += f"\nIdeal Customer (ICP): {training.get('icp', 'N/A')}"
+    business_context += f"\nTone: {training.get('tone', 'professional')}"
         
     system_msg = {
         "role": "system",
         "content": (
             "You are ZarvioAI Copilot, a senior sales AI. You must support the user in: "
             "1) Find Prospects 2) Generate Campaign 3) Write Sequence 4) Get Advice. "
-            f"Here is your real-time CRM data context:\\n{context}"
+            f"\n\nHere is your custom company training context:{business_context}\n\n"
+            f"Here is your real-time CRM data context:\n{context}"
         )
     }
     

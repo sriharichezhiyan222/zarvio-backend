@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from dotenv import load_dotenv
 from database.supabase import get_supabase, has_supabase_config
 from openai import OpenAI
+from services.training_service import get_training_config
 
 # Ensure env vars (e.g. OPENAI_API_KEY) are loaded early.
 load_dotenv()
@@ -135,6 +136,9 @@ async def score_prospect_with_openai(lead: Dict[str, Any]) -> Dict[str, Any]:
         "score should be a number between 0 and 100.\n"
         "category should be one of: low, medium, high.\n"
         "analysis should be a short paragraph explaining the score.\n\n"
+        "Custom Training Context:\n"
+        f"Business Description: {get_training_config().get('business_description')}\n"
+        f"Ideal Customer Profile: {get_training_config().get('icp')}\n\n"
         "Prospect details:\n"
         f"Name: {name or 'N/A'}\n"
         f"Title: {lead.get('title') or 'N/A'}\n"

@@ -1,9 +1,21 @@
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile, status
 from models.lead_model import Lead
 from services.csv_upload_service import upload_leads_from_bytes, upload_leads_from_csv
-from services.lead_service import create_lead
+from services.lead_service import create_lead, list_leads
 
 router = APIRouter(prefix="/leads", tags=["leads"])
+
+
+@router.get("")
+async def list_leads_endpoint():
+    """Return all leads from the Supabase "leads" table."""
+    try:
+        leads = await list_leads()
+        return leads
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

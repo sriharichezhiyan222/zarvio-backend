@@ -29,6 +29,7 @@ from routes.ras_scores import router as ras_router
 from routes.forecast import router as forecast_router
 from routes.leads_search import router as leads_search_router
 from routes.dashboard_stats import router as dashboard_stats_router
+from routes.training import router as training_router
 
 app = FastAPI(
     title="ZarvioAI Backend",
@@ -105,3 +106,4 @@ app.include_router(ras_router)
 app.include_router(forecast_router)
 app.include_router(leads_search_router)
 app.include_router(dashboard_stats_router)
+app.include_router(training_router)
