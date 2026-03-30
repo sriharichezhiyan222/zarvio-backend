@@ -15,8 +15,8 @@ async def get_ras_score(deal_id: int):
         raise HTTPException(status_code=404, detail="Prospect/Deal not found")
         
     prospect = prospect_res.data[0]
-    lead = prospect.get("leads", {})
-    context = f"{lead.get('first_name')} from {lead.get('company')}. Score: {prospect.get('score')}."
+    lead = prospect.get("leads") or {}
+    context = f"{lead.get('first_name', 'Unknown')} from {lead.get('company', 'Unknown')}. Score: {prospect.get('score')}."
 
     system = "You are an AI investment committee. Return valid JSON with integer scores between 0-100."
     prompt = (
