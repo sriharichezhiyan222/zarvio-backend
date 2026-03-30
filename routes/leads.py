@@ -1,62 +1,41 @@
-from fastapi import APIRouter, Body, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, HTTPException, Depends
 from models.lead_model import Lead
-from services.csv_upload_service import upload_leads_from_bytes, upload_leads_from_csv
-from services.lead_service import create_lead, list_leads
+from database.supabase import get_supabase
+from typing import List
+from uuid import UUID
 
 router = APIRouter(prefix="/leads", tags=["leads"])
 
+# Mock dependency for current user since auth structure shouldn't change
+# In a real app, this would be a real auth dependency
+async def get_current_user():
+    # Return a mock user ID or pull from session/JWT
+    return {"id": "00000000-0000-0000-0000-000000000000"}
 
-@router.get("")
-async def list_leads_endpoint():
-    """Return all leads from the Supabase "leads" table."""
+@router.get("", response_model=List[Lead])
+async def list_leads_endpoint(current_user: dict = Depends(get_current_user)):
+    """Reads from the leads table via supabase-py and filters by user_id."""
+    supabase = get_supabase()
+    
     try:
-        leads = await list_leads()
-        return leads
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        # Filter by current_user ID
+        result = supabase.table("leads").select("*").eq("user_id", current_user["id"]).execute()
+        
+        # supabase-py returns data in result.data
+        return result.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.post("", status_code=status.HTTP_201_CREATED)
-async def create_lead_endpoint(lead: Lead):
-    """Create a new lead and store it in the Supabase "leads" table."""
-    try:
-        lead_data = await create_lead(lead.dict(exclude_none=True))
-        lead_id = None
-        if isinstance(lead_data, dict):
-            lead_id = lead_data.get("id") or lead_data.get("lead_id")
-        return {"status": "ok", "id": lead_id, "lead": lead_data}
-    except RuntimeError as exc:
-        # Missing Supabase config or other explicit runtime issues.
-        raise HTTPException(status_code=503, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-
-@router.post("/upload-csv")
-async def upload_leads_csv_endpoint(file: UploadFile = File(...)):
-    """Upload a CSV of leads and store scored prospects."""
-    try:
-        result = await upload_leads_from_csv(file)
-        return result
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
-
-
-@router.post("/upload-csv/raw")
-async def upload_leads_csv_raw_endpoint(raw_body: bytes = Body(...)):
-    """Upload a raw CSV body (application/octet-stream) and store scored prospects."""
-    try:
-        result = await upload_leads_from_bytes(raw_body)
-        return result
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+@router.get("/{id}/ras")
+async def get_lead_ras_mock(id: UUID):
+    """Returns a mock RAS result for a specific lead."""
+    return {
+        "votes": [
+            {"agent": "Pricing", "vote": "APPROVE", "confidence": 94},
+            {"agent": "Risk", "vote": "APPROVE", "confidence": 88},
+            {"agent": "Upsell", "vote": "APPROVE", "confidence": 91},
+            {"agent": "Churn", "vote": "HOLD", "confidence": 67},
+            {"agent": "Marketing", "vote": "APPROVE", "confidence": 95}
+        ],
+        "action": "SEND $25K PROPOSAL"
+    }

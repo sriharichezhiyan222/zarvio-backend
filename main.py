@@ -91,7 +91,7 @@ async def health_check() -> dict:
 
 
 # Attach feature routers
-app.include_router(leads_router)
+app.include_router(leads_router, prefix="/api")
 app.include_router(prospects_router, prefix="/prospects")
 app.include_router(scoring_router)
 app.include_router(analysis_router, prefix="/analysis")
