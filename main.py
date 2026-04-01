@@ -37,6 +37,25 @@ app = FastAPI(
     version="0.2.0",
 )
 
+frontend_url = os.getenv("FRONTEND_URL")
+
+cors_origins = [
+    "http://localhost:3000",
+    "http://localhost:8000",
+    "http://localhost:5173",
+    "https://zarvio-frontend.vercel.app",
+]
+if frontend_url:
+    cors_origins.append(frontend_url)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.on_event("startup")
 async def startup_event():
     """Clear dummy data on startup as requested."""
@@ -51,23 +70,6 @@ async def startup_event():
             print("Successfully cleared out 'Acme Corp' dummy data from Supabase.")
     except Exception as e:
         print(f"Startup clean-up task failed: {e}")
-frontend_url = os.getenv("FRONTEND_URL")
-
-cors_origins = [
-    "http://localhost:3000", 
-    "http://localhost:5173", 
-    "https://zarvio-frontend.vercel.app"
-]
-if frontend_url:
-    cors_origins.append(frontend_url)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 @app.get("/health", tags=["health"])
