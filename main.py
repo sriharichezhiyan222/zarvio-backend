@@ -30,6 +30,7 @@ from routes.forecast import router as forecast_router
 from routes.leads_search import router as leads_search_router
 from routes.dashboard_stats import router as dashboard_stats_router
 from routes.training import router as training_router
+from routes.lead_explorer import router as lead_explorer_router
 
 app = FastAPI(
     title="ZarvioAI Backend",
@@ -94,6 +95,7 @@ async def health_check() -> dict:
 
 # Attach feature routers
 app.include_router(leads_router, prefix="/api")
+app.include_router(lead_explorer_router, prefix="/api")
 app.include_router(prospects_router, prefix="/prospects")
 app.include_router(scoring_router)
 app.include_router(analysis_router, prefix="/analysis")

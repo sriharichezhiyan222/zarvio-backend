@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel, Field
 from models.lead_model import Lead
 from database.supabase import get_supabase
 from typing import List
@@ -25,6 +26,35 @@ async def list_leads_endpoint(current_user: dict = Depends(get_current_user)):
         return result.data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+class AddToCampaignRequest(BaseModel):
+    campaign_id: str = Field(..., min_length=1, max_length=128)
+
+
+@router.post("/{lead_id}/add-to-campaign")
+async def add_lead_to_campaign_endpoint(
+    lead_id: str,
+    body: AddToCampaignRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """MVP: record lead membership for a campaign (in-memory until campaigns table exists)."""
+    from services.lead_explorer_service import add_lead_to_campaign, get_registered_lead
+
+    if not get_registered_lead(lead_id):
+        supabase = get_supabase()
+        try:
+            res = supabase.table("leads").select("id").eq("id", lead_id).limit(1).execute()
+            rows = getattr(res, "data", None) or []
+            if not rows:
+                raise HTTPException(status_code=404, detail="Lead not found")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail="Lead not found") from exc
+
+    add_lead_to_campaign(lead_id, body.campaign_id)
+    return {"status": "ok", "lead_id": lead_id, "campaign_id": body.campaign_id}
+
 
 @router.get("/{id}/ras")
 async def get_lead_ras_mock(id: UUID):

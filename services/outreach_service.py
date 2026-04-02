@@ -160,3 +160,100 @@ async def generate_outreach_for_lead(lead_id: int) -> Dict[str, str]:
         pass
 
     return outreach
+
+
+def _explorer_fallback_email(lead: Dict[str, Any], campaign_id: str) -> Dict[str, str]:
+    name = (lead.get("name") or "there").strip()
+    first = name.split()[0] if name else "there"
+    company = (lead.get("company") or "your team").strip()
+    role = (lead.get("role") or "").strip()
+    angle = (lead.get("outreach_angle") or "").strip()
+
+    subject = f"Quick idea for {company}" if company else f"Hi {first} — quick question"
+    body = (
+        f"Hi {first},\n\n"
+        f"I noticed you're {role + ' at ' if role else ''}{company} and thought there might be a fit.\n"
+    )
+    if angle:
+        body += f"\n{angle}\n"
+    body += (
+        "\nWe're helping similar teams tighten outbound without adding headcount. "
+        "Open to a 15-minute chat this week?\n\n"
+        "Best"
+    )
+    return {"subject": subject, "body": body}
+
+
+async def draft_email_for_explorer(lead_id: str, campaign_id: str) -> Dict[str, str]:
+    """Draft-only email for Lead Explorer (subject + body). Does not send."""
+    from services.lead_explorer_service import get_registered_lead
+
+    lead: Optional[Dict[str, Any]] = get_registered_lead(lead_id)
+    if not lead and has_supabase_config():
+        supabase = get_supabase()
+
+        def _get():
+            return (
+                supabase.table("leads")
+                .select("id, first_name, last_name, name, email, company, title, role, location")
+                .eq("id", lead_id)
+                .limit(1)
+                .execute()
+            )
+
+        result = await asyncio.to_thread(_get)
+        rows = getattr(result, "data", []) or []
+        if rows:
+            row = rows[0]
+            name = (row.get("name") or "").strip()
+            if not name:
+                fn = (row.get("first_name") or "").strip()
+                ln = (row.get("last_name") or "").strip()
+                name = f"{fn} {ln}".strip()
+            lead = {
+                "name": name or "there",
+                "role": (row.get("role") or row.get("title") or "").strip(),
+                "company": (row.get("company") or "").strip(),
+                "location": (row.get("location") or "").strip(),
+                "email": (row.get("email") or "").strip(),
+                "outreach_angle": "",
+            }
+
+    if not lead:
+        raise ValueError(f"Unknown lead_id={lead_id}")
+
+    if client is None:
+        return _explorer_fallback_email(lead, campaign_id)
+
+    name = (lead.get("name") or "there").strip()
+    company = (lead.get("company") or "their company").strip()
+    role = (lead.get("role") or "").strip()
+    angle = (lead.get("outreach_angle") or "").strip()
+
+    prompt = (
+        "Return JSON with keys subject and body only. subject is under 90 chars. "
+        "body is a short cold email (under 180 words), professional, no HTML.\n\n"
+        f"Prospect: {name}, {role}, {company}.\n"
+        f"Campaign id (context only): {campaign_id}.\n"
+    )
+    if angle:
+        prompt += f"Angle to use: {angle}\n"
+
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You write concise B2B outbound email drafts."},
+                {"role": "user", "content": prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+        raw_content = completion.choices[0].message.content or "{}"
+        parsed = json.loads(raw_content)
+        subject = (parsed.get("subject") or "").strip() or f"Idea for {company}"
+        body = (parsed.get("body") or "").strip()
+        if not body:
+            return _explorer_fallback_email(lead, campaign_id)
+        return {"subject": subject, "body": body}
+    except Exception:
+        return _explorer_fallback_email(lead, campaign_id)
